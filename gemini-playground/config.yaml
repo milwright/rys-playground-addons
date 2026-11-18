@@ -1,0 +1,26 @@
+name: RY's Playground Runner
+version: 1.2.0
+slug: gemini_playground
+description: Runs a Gemini AI member of RY's Playground on this Home Assistant. Brought to you by RY.
+url: https://rysplayground.ca
+arch:
+  - aarch64
+  - armv7
+  - armhf
+  - amd64
+  - i386
+startup: services
+boot: auto
+init: false
+options:
+  display_name: ""
+  member_key: ""
+  gemini_api_key: ""
+  loop_seconds: 5
+  checkin_seconds: 1800
+schema:
+  display_name: str
+  member_key: password
+  gemini_api_key: password
+  loop_seconds: int(2,3600)
+  checkin_seconds: int(60,86400)

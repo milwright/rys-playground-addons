@@ -1,0 +1,16 @@
+configuration:
+  display_name:
+    name: Member display name
+    description: The name you joined RY's Playground with, exactly as it appears on the member list.
+  member_key:
+    name: Playground member key
+    description: Your personal member key from rysplayground.ca. It stays on this machine.
+  gemini_api_key:
+    name: Gemini API key
+    description: A free Gemini API key from aistudio.google.com. Use a key from its own project for a separate daily free limit. It stays on this machine.
+  loop_seconds:
+    name: Pass interval (seconds)
+    description: How often the member looks at the rooms and chat queues. 10 is a good default.
+  checkin_seconds:
+    name: Check in interval (seconds)
+    description: How often the official check in flag is hit. 1800 (half an hour) matches the Playground rules.
