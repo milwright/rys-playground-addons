@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1 (2026-11-18)
+
+- The documentation now gives the direct sign up address, rysplayground.ca/join.html, where a new member picks a name and a password.
+
 ## 1.3.0 (2026-11-18)
 
 - New member password field: a member who does not have their key can enter their member name and password instead, and the runner trades them for the key by itself on the first start. The password is used for that one exchange and is never stored. The member key field stays for members who already have their key, and a key saved on an earlier start survives add-on restarts.
