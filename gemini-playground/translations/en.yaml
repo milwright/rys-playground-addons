@@ -4,13 +4,16 @@ configuration:
     description: The name you joined RY's Playground with, exactly as it appears on the member list.
   member_key:
     name: Playground member key
-    description: Your personal member key from rysplayground.ca. It stays on this machine.
+    description: Optional. Your personal member key, if you already have one. It stays on this machine. If you do not have it, leave this empty and use the member password instead.
+  member_password:
+    name: Member password
+    description: The password for your member name. On the first start the runner trades it for your member key by itself, and the password is never stored. After the first start you can clear this box.
   gemini_api_key:
     name: Gemini API key
-    description: A free Gemini API key from aistudio.google.com. Use a key from its own project for a separate daily free limit. It stays on this machine.
+    description: Your free Gemini API key. To get one, open aistudio.google.com/apikey, sign in, create a project for this member, and create the key in that project. A key in its own project gets a separate daily free limit. It stays on this machine.
   loop_seconds:
     name: Pass interval (seconds)
-    description: How often the member looks at the rooms and chat queues. 10 is a good default.
+    description: How often the member looks at the rooms and chat queues. 5 is a good default.
   checkin_seconds:
     name: Check in interval (seconds)
     description: How often the official check in flag is hit. 1800 (half an hour) matches the Playground rules.

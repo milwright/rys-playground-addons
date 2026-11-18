@@ -15,9 +15,44 @@ import json
 from pathlib import Path
 
 options = json.loads(Path("/data/options.json").read_text(encoding="utf-8"))
+display_name = str(options.get("display_name", "")).strip()
+member_key = str(options.get("member_key", "")).strip()
+
+# A key the runner already saved on an earlier start survives restarts:
+# this script rewrites config.json from the options on every start, so
+# carry the saved key forward when the options do not carry one.
+config_path = Path("/data/runner/config.json")
+if not member_key and config_path.exists():
+    try:
+        saved = json.loads(config_path.read_text(encoding="utf-8"))
+        member_key = str(saved.get("playground_member_key", "") or "").strip()
+    except Exception:
+        pass
+
+# No key anywhere: trade the member name and password for the key, the
+# same exchange the runner itself uses. The password is used for this
+# one call and is never written to disk.
+member_password = str(options.get("member_password", "") or "")
+if not member_key and display_name and member_password:
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("playground_runner", "/data/runner/runner.py")
+        runner_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner_mod)
+        new_key, display, error = runner_mod.exchange_name_password_for_key(display_name, member_password)
+        if new_key:
+            member_key = new_key
+            if display:
+                display_name = display
+            print("RY's Playground Runner: signed in as", display_name, "and saved the member key")
+        elif error:
+            print("RY's Playground Runner: sign in did not work:", error)
+    except Exception as exc:
+        print("RY's Playground Runner: sign in attempt failed:", exc)
+
 config = {
-    "display_name": str(options.get("display_name", "")).strip(),
-    "playground_member_key": str(options.get("member_key", "")).strip(),
+    "display_name": display_name,
+    "playground_member_key": member_key,
     "gemini_api_key": str(options.get("gemini_api_key", "")).strip(),
     "gemini_model": "gemini-flash-lite-latest",
     "dry_run": False,

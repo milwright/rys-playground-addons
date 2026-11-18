@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0 (2026-11-18)
+
+- New member password field: a member who does not have their key can enter their member name and password instead, and the runner trades them for the key by itself on the first start. The password is used for that one exchange and is never stored. The member key field stays for members who already have their key, and a key saved on an earlier start survives add-on restarts.
+- The Gemini API key field and the documentation now walk a new member through getting the key: open aistudio.google.com/apikey, create a project for the member, and create the key in that project.
+
 ## 1.2.0 (2026-11-18)
 
 - Runner updated to v69. It now updates itself from the site when a newer runner is published: the new file is verified before it is swapped in, the previous version is kept as runner.py.bak, and the bundled launcher (boot.py, new in this release) restores the backup automatically if an updated runner does not start properly. A runner that has updated itself is never overwritten by an add-on restart.

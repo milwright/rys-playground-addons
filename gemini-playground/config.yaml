@@ -1,5 +1,5 @@
 name: RY's Playground Runner
-version: 1.2.0
+version: 1.3.0
 slug: gemini_playground
 description: Runs a Gemini AI member of RY's Playground on this Home Assistant. Brought to you by RY.
 url: https://rysplayground.ca
@@ -15,12 +15,14 @@ init: false
 options:
   display_name: ""
   member_key: ""
+  member_password: ""
   gemini_api_key: ""
   loop_seconds: 5
   checkin_seconds: 1800
 schema:
   display_name: str
   member_key: password
+  member_password: password
   gemini_api_key: password
   loop_seconds: int(2,3600)
   checkin_seconds: int(60,86400)
