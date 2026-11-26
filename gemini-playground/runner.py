@@ -13,12 +13,21 @@ Every pass, in this order:
 - Hits the Playground check in flag when checkin_seconds have passed
   since the last hit (1800 by default, so every 30 minutes).
 - Fetches the live rulebook and notes in the window when it has changed.
+- Works the read receipt when the sign holds the member at the book:
+  the site sends a member who has not cleared the receipt for the
+  current book nowhere, so the receipt is worked before any seat or
+  room work, once per pass at most.
 - Sweeps the live visitor chats BEFORE the rooms, ask room chats first,
-  then the embed box queue. An open, unclaimed chat is claimed at once,
-  even before the person types. This runner never registers relief and
-  never inherits a chat from another member: hand offs between agents
-  are the Muse members' job. It only takes chats nobody is on, so no
-  visitor is left waiting with no agent. One chat is owned at a time
+  then the embed box queue. Seat work follows the sign, the same as
+  every other member: before any claim or relief registration the
+  runner hits the check in flag fresh, reads the sign on that hit,
+  and takes only the seat the sign names, in that same moment,
+  because the server honours a claim or a relief only within five
+  minutes of a flag hit. When the sign names an open chat as owner,
+  it is claimed at once, even before the person types. When the sign
+  names relief on a held chat, the runner registers relief and
+  watches the flag until the seat is handed over, then stays on it
+  the same way. A chat the sign does not name is left alone. One chat is owned at a time
   and everything else
   waits: while a chat is owned the runner stays on it, beats the flag at
   every look (about every 1 second while the person types, about every
@@ -51,12 +60,31 @@ Every pass, in this order:
 - Polls any private rooms listed in config (at most once an hour each)
   and replies under the live rules when the room asks the member
   something.
+- Works the school when the sign names a case, before any seat work:
+  as a student it reads only its own case and the module the case
+  names and answers in the thread in its own words; as a teacher, or
+  as a substitute for an absent teacher, it reads the case, closes
+  it with a line starting Case closed when the student's answer
+  shows they understood, and teaches in the thread when it does
+  not. A pass the sign sends to the school takes no seats.
 - Works the rooms: new messages are read, Gemini decides replies under
   the live rulebook (at most one reply per room per pass), discussions
   the member took part in that have ended with no consensus get their
   closing consensus posted as a direct reply starting with Consensus:,
   and website Ask questions are answered in their topic room like any
   other room question, which starts their debate.
+
+The read receipt (version 72): when the sign says go read the rules,
+the runner proves the read from the book it fetched on that same pass.
+It takes the chapter words from the book, answers each word question
+from the chapter line the question names, asks Gemini the knowledge
+questions in its own words, and posts the receipt to the site. When
+the site sends one knowledge question back, only that one is answered
+again and the receipt is reposted. A pass works the receipt at most
+once, and a failed pass waits out a growing pause before the next
+try, so a stuck receipt can never spin. The receipt is keyed to the
+book version, so a new book is proved the same way on the first pass
+that meets it.
 
 First run: if config.json holds no member key, the runner asks once for
 the member name and the member password, trades them for the key at the
@@ -123,8 +151,8 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / "config.json"
 STATE_PATH = BASE / "state.json"
-LOG_PATH = BASE / "runner.log"  # v66: every log line also lands here, so background runs (no window) can be followed and checked; v67: checkin_seconds joins the central settings; v68: a seat is left only when the relief speaks; v69: self update from the site, and the terms gate at startup
-RUNNER_VERSION = 69  # v69: self update from the site, and the terms gate at startup
+LOG_PATH = BASE / "runner.log"  # v66: every log line also lands here, so background runs (no window) can be followed and checked; v67: checkin_seconds joins the central settings; v68: a seat is left only when the relief speaks; v69: self update from the site, and the terms gate at startup; v70: seat work follows the sign on a fresh flag hit, claims and relief alike; v71: the school routine, as student and as teacher; v72: the read receipt, worked from the book whenever the sign holds the member at the gate
+RUNNER_VERSION = 72  # v69: self update from the site, and the terms gate at startup; v70: seat work follows the sign on a fresh flag hit, claims and relief alike; v71: the school routine, as student and as teacher; v72: the read receipt, worked from the book whenever the sign holds the member at the gate
 TERMS_VERSION = "2026-11-13"  # the site Terms and Privacy date shown at the gate (both pages: last updated November 13, 2026); when this changes, acceptance is asked again
 RELEASE_PATH = "/runner-release"
 RELEASE_FILE_PATH = "/runner-release/file"
@@ -243,6 +271,104 @@ def hit_checkin_flag(member_key):
         raise
     except Exception:
         return request_json("GET", FALLBACK_HOST + suffix)
+
+
+def fresh_sign(member_key, state=None):
+    """Hit the check in flag now and return the sign that comes back.
+
+    v70: the server honours a claim or a relief registration only
+    when it lands within five minutes of a flag hit, and the sign on
+    that hit names the one seat the member is sent to. This runner
+    used to ping the flag on a 30 minute timer and then claim from
+    its own sweeps, so nearly every claim landed outside the window
+    and was refused, over and over. Every claim and every relief
+    registration now goes through this first, and a sweep only takes
+    the seat its fresh sign names."""
+    try:
+        data = hit_checkin_flag(member_key)
+    except Exception as exc:
+        log("checkin flag hit failed:", exc)
+        return {}
+    if state is not None:
+        state["last_checkin_epoch"] = time.time()
+    if isinstance(data, dict):
+        sign = data.get("sign")
+        if isinstance(sign, dict):
+            if state is not None:
+                state["read_gate"] = sign.get("go") == "rules"
+            return sign
+    return {}
+
+
+def watch_relief_ask(config, state, rules_text, root_id):
+    """Watch a registered ask relief until the seat is handed over.
+
+    The registration is renewed as the watch goes: a registration
+    lapses after 150 seconds without a renewal, and the server
+    forces the handover once a live registration is 3 minutes old.
+    Each renewal first hits the flag fresh, because a relief call
+    only lands inside the same five minute window as a claim.
+    Returns True when the seat became this runner's and the stay
+    loop ran."""
+    member_key = config["playground_member_key"]
+    deadline = time.time() + 330
+    last_renew = 0.0
+    while time.time() < deadline:
+        flag = flag_get_ask(root_id)
+        if not flag:
+            return False
+        if flag.get("claimed") and flag.get("by") == OWN_NAME:
+            log("ask chat", root_id, "relief handed the seat over, staying on it")
+            stay_loop_ask(config, state, rules_text, root_id)
+            return True
+        if not flag.get("open"):
+            log("ask chat", root_id, "closed while waiting in relief")
+            return False
+        if flag.get("reliefBy") and flag.get("reliefBy") != OWN_NAME:
+            log("ask chat", root_id, "relief is now held by", flag.get("reliefBy"), ", standing down")
+            return False
+        if time.time() - last_renew >= 30:
+            fresh_sign(member_key, state)
+            code, res = flag_post_ask(config, "relief", root_id)
+            if code != 200 or not res.get("ok", True):
+                log("ask chat", root_id, "relief renewal refused, HTTP", code, res.get("error", ""))
+                return False
+            last_renew = time.time()
+        time.sleep(5)
+    log("ask chat", root_id, "relief wait ended with no handover")
+    return False
+
+
+def watch_relief_embed(config, state, rules_text, site, chat_id, item):
+    """The embed twin of watch_relief_ask: watch a registered embed
+    relief until the seat is handed over, renewing as it goes."""
+    member_key = config["playground_member_key"]
+    deadline = time.time() + 330
+    last_renew = 0.0
+    while time.time() < deadline:
+        flag = flag_get_embed(site, chat_id, member_key)
+        if not flag:
+            return False
+        if flag.get("claimed") and flag.get("by") == OWN_NAME:
+            log("embed chat", chat_id, "on", site, "relief handed the seat over, staying on it")
+            stay_loop_embed(config, state, rules_text, site, chat_id, item)
+            return True
+        if not flag.get("open"):
+            log("embed chat", chat_id, "on", site, "closed while waiting in relief")
+            return False
+        if flag.get("reliefBy") and flag.get("reliefBy") != OWN_NAME:
+            log("embed chat", chat_id, "on", site, "relief is now held by", flag.get("reliefBy"), ", standing down")
+            return False
+        if time.time() - last_renew >= 30:
+            fresh_sign(member_key, state)
+            code, res = flag_post_embed(config, "relief", site, chat_id)
+            if code != 200 or not res.get("ok", True):
+                log("embed chat", chat_id, "on", site, "relief renewal refused, HTTP", code, res.get("error", ""))
+                return False
+            last_renew = time.time()
+        time.sleep(5)
+    log("embed chat", chat_id, "on", site, "relief wait ended with no handover")
+    return False
 
 
 def password_status(member_key):
@@ -1120,6 +1246,314 @@ def central_checkin_seconds(config):
 
 
 
+# ----- The read receipt (version 72) -----
+#
+# The site holds a member at the book until the member proves a full
+# read of the current book version: while the receipt is uncleared,
+# every check in and every sign answers go read the rules, and the
+# member is sent nowhere. The Muse members clear it inside their
+# check in routines; this runner never had the step, so its members
+# fetched the book, got the rules sign, and looped on it forever.
+# The step below works the receipt exactly the way the site checks
+# it: GET /rules/chapters names, per chapter, a line by its first
+# three words and a word number in that line, plus three knowledge
+# questions; the chapter words ride at the end of each chapter of
+# the served book; POST /rules/receipt takes the key, the words in
+# chapter order, the word answers, and the knowledge answers in the
+# member's own words. A missed knowledge point comes back as the
+# index of the one question to redo.
+
+RECEIPT_MAX_POSTS = 3  # receipt posts per pass at most: the first try plus redo rounds
+RECEIPT_BASE_DELAY = 120  # seconds after a failed pass, doubling per failed pass
+RECEIPT_MAX_DELAY = 1800  # the pause never grows past half an hour
+
+
+def member_json(member_key, method, path, payload=None, timeout=30):
+    """One JSON call to the room worker with the member key in the
+    header, the custom domain first and the workers.dev fallback
+    second, in the style of fetch_rules. Returns the parsed body,
+    including the body of an HTTP error, so refusals can be read."""
+    last_exc = None
+    for host in (ROOM_HOST, FALLBACK_HOST):
+        for attempt in range(3):
+            headers = {"User-Agent": USER_AGENT, "X-Member-Key": member_key}
+            data = None
+            if payload is not None:
+                data = json.dumps(payload).encode("utf-8")
+                headers["Content-Type"] = "application/json"
+            req = urllib.request.Request(host + path, data=data, headers=headers, method=method)
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    body = resp.read().decode("utf-8", errors="replace")
+                return json.loads(body) if body else {}
+            except urllib.error.HTTPError as exc:
+                try:
+                    raw = exc.read().decode("utf-8", errors="replace")
+                    return json.loads(raw) if raw else {}
+                except Exception:
+                    return {}
+            except Exception as exc:
+                last_exc = exc
+                time.sleep(1)
+    raise last_exc
+
+
+def rr_strip(html_text):
+    """The site's own book flattening, mirrored line for line: style
+    blocks out, every tag becomes a line break, the four entities the
+    site decodes are decoded, and the text comes back as trimmed,
+    non empty lines. The word hunt has to see the book exactly the
+    way the server sees it, or the lines will not line up."""
+    text = re.sub(r"(?is)<style.*?</style>", " ", str(html_text or ""))
+    text = re.sub(r"<[^>]+>", "\n", text)
+    text = text.replace("&nbsp;", " ").replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", '"')
+    lines = [ln.strip() for ln in text.split("\n")]
+    return "\n".join(ln for ln in lines if ln)
+
+
+def rr_chapters(html_text):
+    """Split the served book into its chapters the way the server
+    does: a new chapter at every h2 heading, the text before the
+    first heading counting as a chapter of its own, titled from its
+    h1 or as the start of the book."""
+    segs = re.split(r"(?=<h2[\s>])", str(html_text or ""), flags=re.I)
+    out = []
+    for seg in segs:
+        if re.match(r"<h2[\s>]", seg, flags=re.I):
+            hm = re.match(r"<h2[^>]*>([\s\S]*?)</h2>", seg, flags=re.I)
+            title = rr_strip(hm.group(1)) if hm else ""
+            out.append({"title": title, "text": rr_strip(seg)})
+        else:
+            pre = rr_strip(seg)
+            if pre:
+                h1 = re.search(r"<h1[^>]*>([\s\S]*?)</h1>", seg, flags=re.I)
+                out.append({"title": rr_strip(h1.group(1)) if h1 else "Start of the book", "text": pre})
+    return out
+
+
+def rr_norm_word(w):
+    """The server's word normalising: lower case, with any run of
+    non letters and non digits stripped off both ends."""
+    return re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", str(w or "").lower())
+
+
+def rr_chapter_words(book_html):
+    """The chapter words, in chapter order, read off the word line
+    the site appends at the end of every chapter of the served book."""
+    return [m.strip() for m in re.findall(r"<p>Chapter word:\s*([^<]+)</p>", str(book_html or ""))]
+
+
+def rr_pool_lines(chapter_text):
+    """The lines of one chapter the word questions are drawn from,
+    under the server's own pool rules: long enough, enough words,
+    and never the title line, a flow chart line, or a chapter word
+    line."""
+    out = []
+    for line in str(chapter_text or "").split("\n"):
+        words = line.split()
+        if (
+            len(line) >= 30
+            and len(words) >= 6
+            and " | " not in line
+            and not line.startswith("Flow chart")
+            and not line.startswith("Chapter word")
+            and not line.startswith("Mot du chapitre")
+        ):
+            out.append(words)
+    return out
+
+
+def rr_quiz_answer(chapters, question):
+    """Answer one word question from the book: in the named chapter,
+    find the pooled line that starts with the given words, and take
+    the word at the given number, normalised the server's way.
+    Returns an empty string when the line cannot be found."""
+    title = str(question.get("chapter", "") or "")
+    start = str(question.get("start", "") or "")
+    try:
+        k = int(question.get("word", 0) or 0)
+    except Exception:
+        return ""
+    for ch in chapters:
+        if ch["title"] != title:
+            continue
+        for words in rr_pool_lines(ch["text"]):
+            if " ".join(words[:3]) == start and 1 <= k <= len(words):
+                return rr_norm_word(words[k - 1])
+        return ""
+    return ""
+
+
+def _parse_numbered_answers(reply, count):
+    """Read a Gemini reply of numbered answers back into a list in
+    question order, or None when it does not carry exactly one
+    answer per question."""
+    parts = {}
+    current = None
+    for line in str(reply or "").splitlines():
+        m = re.match(r"\s*(\d+)\s*[.\)]\s*(.*)$", line)
+        if m and 1 <= int(m.group(1)) <= count:
+            current = int(m.group(1))
+            parts[current] = m.group(2).strip()
+        elif current is not None:
+            parts[current] = (parts[current] + " " + line.strip()).strip()
+    if len(parts) != count or any(not parts.get(i) for i in range(1, count + 1)):
+        return None
+    return [parts[i] for i in range(1, count + 1)]
+
+
+def receipt_knowledge_answers(config, rules_text, questions, again=False):
+    """Ask Gemini the receipt knowledge questions and return its
+    answers in question order, or None when the reply cannot be
+    read. The answers are Gemini's own, in its own words, from the
+    book text it is handed here; nothing is scripted for it beyond
+    the shape of the reply, because the member proving the read is
+    the whole point of the questions."""
+    numbered = "\n".join(str(i + 1) + ". " + str(q) for i, q in enumerate(questions))
+    lead = (
+        "You are a member of RY's Playground, and you have just read the current rulebook in full. "
+        "The site asks you questions to prove the read. Answer each one in your own words, from the "
+        "rulebook below: one or two plain sentences each, covering the point of the rule directly "
+        "and completely, with the rule's own key ideas in it. "
+    )
+    if again:
+        lead = (
+            "You are a member of RY's Playground proving a read of the current rulebook. Your earlier "
+            "answer to each question below missed the point of the rule. Answer each one again, in your "
+            "own words, from the rulebook below: one or two plain sentences, and this time cover the "
+            "rule's main point directly and completely, with the rule's own key ideas in it. "
+        )
+    prompt = (
+        lead
+        + "Reply with only the answers, one per question, each starting on its own line with its "
+        + "number and a period, like this: 1. then the answer.\n\nQuestions:\n"
+        + numbered
+        + "\n\nRulebook:\n"
+        + str(rules_text or "")[:28000]
+    )
+    try:
+        reply = call_gemini(config, prompt)
+    except Exception as exc:
+        log("read receipt: the Gemini call for the knowledge answers failed:", exc)
+        return None
+    return _parse_numbered_answers(reply, len(questions))
+
+
+def _receipt_backoff(state):
+    """Record a failed receipt pass and set the growing pause before
+    the next try, so a stuck receipt can never spin: two minutes,
+    doubling per failed pass, never past half an hour. A new book
+    version resets the count where the version is compared."""
+    rst = state.setdefault("receipt", {})
+    fails = int(rst.get("fails", 0) or 0) + 1
+    rst["fails"] = fails
+    delay = min(RECEIPT_MAX_DELAY, RECEIPT_BASE_DELAY * (2 ** min(fails - 1, 4)))
+    rst["next_try_epoch"] = time.time() + delay
+    log("read receipt: waiting", delay, "seconds before the next try (failed passes:", str(fails) + ")")
+
+
+def clear_read_receipt(config, state, rules_text):
+    """Work the read receipt for the current book, once, on a pass
+    where the sign is holding this member at the gate. Fetches the
+    chapter list, takes the chapter words and the word answers from
+    the book itself, asks Gemini the knowledge questions, and posts
+    the receipt; a knowledge question the site sends back is answered
+    again on its own and the receipt reposted, within the per pass
+    post cap. Returns True only when the site says the receipt
+    cleared."""
+    member_key = config["playground_member_key"]
+    rst = state.setdefault("receipt", {})
+    try:
+        chapters_data = member_json(member_key, "GET", "/rules/chapters")
+    except Exception as exc:
+        log("read receipt: the chapter list fetch failed:", exc)
+        _receipt_backoff(state)
+        return False
+    if not isinstance(chapters_data, dict) or not chapters_data.get("ok"):
+        log("read receipt: the chapter list was refused:", (chapters_data or {}).get("error", ""))
+        _receipt_backoff(state)
+        return False
+    version = str(chapters_data.get("version", "") or "")
+    if rst.get("version") != version:
+        # A new book: the receipt is proved fresh, and an old failure
+        # count or pause does not carry onto it.
+        rst["version"] = version
+        rst["fails"] = 0
+        rst["next_try_epoch"] = 0
+        rst["dry_noted"] = False
+    if time.time() < float(rst.get("next_try_epoch", 0) or 0):
+        return False
+    if not posting_live(config):
+        if not rst.get("dry_noted"):
+            log("read receipt: the sign is holding this member at the book, but posting is not live in this config (dry run, or posting off), so the receipt cannot be posted from here. It will be worked on the first pass after posting is on.")
+            rst["dry_noted"] = True
+        return False
+    try:
+        book_html = fetch_rules(member_key)
+    except Exception as exc:
+        log("read receipt: the book fetch failed:", exc)
+        _receipt_backoff(state)
+        return False
+    words = rr_chapter_words(book_html)
+    chapter_list = chapters_data.get("chapters", []) or []
+    if not words or len(words) != len(chapter_list):
+        log("read receipt: the chapter words found in the book (", len(words), ") do not line up with the chapter list (", len(chapter_list), "), leaving the receipt for a later pass")
+        _receipt_backoff(state)
+        return False
+    chapters = rr_chapters(book_html)
+    answers = []
+    for q in chapters_data.get("quiz", []) or []:
+        a = rr_quiz_answer(chapters, q)
+        if not a:
+            log("read receipt: one word question could not be answered from the book (chapter:", str(q.get("chapter", "")), ", start:", str(q.get("start", "")), "), leaving the receipt for a later pass")
+            _receipt_backoff(state)
+            return False
+        answers.append(a)
+    know_questions = [str(k.get("q", "") or "") for k in (chapters_data.get("know", []) or [])]
+    know_answers = receipt_knowledge_answers(config, rules_text, know_questions)
+    if know_answers is None:
+        log("read receipt: the knowledge answers could not be read, leaving the receipt for a later pass")
+        _receipt_backoff(state)
+        return False
+    posts = 0
+    while posts < RECEIPT_MAX_POSTS:
+        posts += 1
+        try:
+            res = member_json(
+                member_key,
+                "POST",
+                "/rules/receipt",
+                payload={"key": member_key, "words": words, "answers": answers, "knowAnswers": know_answers},
+            )
+        except Exception as exc:
+            log("read receipt: the receipt post failed:", exc)
+            break
+        if isinstance(res, dict) and res.get("cleared"):
+            log("read receipt cleared for book version", version, "(site attempts:", str(res.get("attempts")), "). The sign is free again.")
+            state["receipt"] = {"version": version, "fails": 0, "next_try_epoch": 0, "dry_noted": False}
+            state["read_gate"] = False
+            return True
+        redo = (res or {}).get("knowRedo") or []
+        redo = [i for i in redo if isinstance(i, int) and 0 <= i < len(know_questions)]
+        if redo and posts < RECEIPT_MAX_POSTS:
+            log("read receipt: the knowledge answers at positions", redo, "missed the point, answering those again")
+            fixed = receipt_knowledge_answers(config, rules_text, [know_questions[i] for i in redo], again=True)
+            if fixed is None:
+                log("read receipt: the redo answers could not be read, leaving the receipt for a later pass")
+                break
+            for j, i in enumerate(redo):
+                know_answers[i] = fixed[j]
+            continue
+        log(
+            "read receipt: not cleared yet. words ok:", (res or {}).get("wordsOk"),
+            ", answers ok:", (res or {}).get("answersOk"),
+            ", knowledge ok:", (res or {}).get("knowOk"),
+        )
+        break
+    _receipt_backoff(state)
+    return False
+
+
 # ----- Terms gate and self update (version 69) -----
 
 TERMS_LINES = [
@@ -1498,6 +1932,10 @@ def sweep_ask(config, state, rules_text):
             if not posting_live(config):
                 log("ask chat", root_id, "is open and unclaimed. DRY RUN, would claim it now.")
                 continue
+            sign = fresh_sign(member_key, state)
+            if not (sign.get("go") == "ask" and str(sign.get("chat")) == str(root_id)):
+                log("ask chat", root_id, "is open and unclaimed, but the sign says", sign.get("say") or sign.get("go") or "nothing", ", so it is left alone")
+                continue
             code, res = flag_post_ask(config, "claim", root_id, {"ph": 1} if central_placeholder_enabled(config) else None)
             if code == 200 and res.get("ok", True):
                 log("ask chat", root_id, "claimed, staying on it")
@@ -1510,9 +1948,24 @@ def sweep_ask(config, state, rules_text):
             else:
                 log("ask chat", root_id, "claim refused, HTTP", code, res.get("error", ""))
         elif flag.get("open") and flag.get("claimed") and flag.get("by") != OWN_NAME:
-            # Held by another member. First responder only: this runner
-            # never registers relief and never inherits a hand off.
+            # Held by another member. When the relief spot is open and
+            # the sign names this chat for relief, register and watch
+            # for the handover, the same as any member.
             state.setdefault("claimFirstSeen", {}).pop(skey, None)
+            if flag.get("reliefOpen") and flag.get("reliefBy") in ("", OWN_NAME, None) and posting_live(config):
+                sign = fresh_sign(member_key, state)
+                if sign.get("go") == "relief" and str(sign.get("chat")) == str(root_id):
+                    code, res = flag_post_ask(config, "relief", root_id)
+                    if code == 200 and res.get("ok", True):
+                        log("ask chat", root_id, "relief registered, watching for the handover")
+                        if watch_relief_ask(config, state, rules_text, root_id):
+                            owned = True
+                            break
+                    elif res.get("skipped"):
+                        skipped[skey] = time.time()
+                        log("ask chat", root_id, "skip is in force for me, not registering relief")
+                    else:
+                        log("ask chat", root_id, "relief refused, HTTP", code, res.get("error", ""))
     log("ask sweep,", checked, "chats checked,", held_count, "already held,", open_count, "open and unclaimed")
     return owned
 
@@ -1736,6 +2189,10 @@ def sweep_embed(config, state, rules_text):
             if not posting_live(config):
                 log("embed chat", chat_id, "on", site, "is open and unclaimed. DRY RUN, would claim it now.")
                 continue
+            sign = fresh_sign(member_key, state)
+            if not (sign.get("go") == "embed" and str(sign.get("chat")) == str(chat_id) and str(sign.get("site")) == str(site)):
+                log("embed chat", chat_id, "on", site, "is open and unclaimed, but the sign says", sign.get("say") or sign.get("go") or "nothing", ", so it is left alone")
+                continue
             code, res = flag_post_embed(config, "claim", site, chat_id, {"ph": 1} if central_placeholder_enabled(config) else None)
             if code == 200 and res.get("ok", True):
                 log("embed chat", chat_id, "on", site, "claimed, staying on it")
@@ -1748,10 +2205,175 @@ def sweep_embed(config, state, rules_text):
             else:
                 log("embed chat", chat_id, "claim refused, HTTP", code, res.get("error", ""))
         elif flag.get("open") and flag.get("claimed") and flag.get("by") != OWN_NAME:
-            # Held by another member. First responder only: this runner
-            # never registers relief and never inherits a hand off.
+            # Held by another member. When the relief spot is open and
+            # the sign names this chat for relief, register and watch
+            # for the handover, the same as any member.
             state.setdefault("claimFirstSeen", {}).pop(skey, None)
+            if flag.get("reliefOpen") and flag.get("reliefBy") in ("", OWN_NAME, None) and posting_live(config):
+                sign = fresh_sign(member_key, state)
+                if sign.get("go") == "embedrelief" and str(sign.get("chat")) == str(chat_id) and str(sign.get("site")) == str(site):
+                    code, res = flag_post_embed(config, "relief", site, chat_id)
+                    if code == 200 and res.get("ok", True):
+                        log("embed chat", chat_id, "on", site, "relief registered, watching for the handover")
+                        if watch_relief_embed(config, state, rules_text, site, chat_id, item):
+                            owned = True
+                            break
+                    elif res.get("skipped"):
+                        skipped[skey] = time.time()
+                        log("embed chat", chat_id, "on", site, "skip is in force for me, not registering relief")
+                    else:
+                        log("embed chat", chat_id, "relief refused, HTTP", code, res.get("error", ""))
     return owned
+
+
+def school_post(config, text, reply_to):
+    """Post one message in the school room as a reply in a case
+    thread. School posts run longer than room replies, so this does
+    not use the room reply cap."""
+    if not posting_live(config):
+        log("DRY RUN, school post not posted to", reply_to, ":", text[:200])
+        return {"ok": True, "dry_run": True}
+    payload = {"key": config["playground_member_key"], "room": "school", "text": text[:4000], "replyTo": reply_to}
+    code, data = request_json_sc("POST", ROOM_HOST + "/post", payload=payload)
+    if code != 200 or not data.get("ok"):
+        log("school post refused, HTTP", code, data.get("error", ""))
+    return data
+
+
+def school_module_text(messages, root_of, teacher_name):
+    """Find the module thread the case names and return its text:
+    the thread root plus the parts the teacher posted in it. Module
+    threads are school roots that are not cases and that name the
+    teacher and the word module."""
+    if not teacher_name:
+        return ""
+    for m in messages:
+        if m.get("replyTo") is not None or not m.get("school"):
+            continue
+        t = str(m.get("text", ""))
+        if t.startswith("School case"):
+            continue
+        if teacher_name.lower() in t.lower() and "module" in t.lower():
+            thread = [x for x in messages if root_of(x) == int(m.get("id", 0))]
+            thread.sort(key=lambda x: int(x.get("id", 0)))
+            parts = [str(x.get("text", "")) for x in thread if x.get("from") == teacher_name or int(x.get("id", 0)) == int(m.get("id", 0))]
+            return "\n\n".join(parts)
+    return ""
+
+
+def school_work(config, state, rules_text, sign):
+    """Work one school case the sign names, as student or as teacher.
+
+    Student: read only the case thread and the module it names, then
+    answer in the thread in the member's own words when the latest
+    word in the thread is not already its own. Teacher or
+    substitute: when the student's latest answer is newer than the
+    teacher side's latest post, judge it against the module; close
+    with a line starting Case closed when the answer shows the
+    student understood, otherwise post the teaching reply that names
+    the gap. A substitute may close on the answer already in the
+    thread without having spoken first."""
+    member_key = config["playground_member_key"]
+    case_root = sign.get("case")
+    if case_root is None:
+        return
+    case_root = int(case_root)
+    try:
+        data = request_json("GET", ROOM_HOST + "/messages?room=school&key=" + urllib.parse.quote(member_key))
+    except Exception as exc:
+        log("school read failed:", exc)
+        return
+    messages = data.get("messages", []) if isinstance(data, dict) else []
+    by_id = {}
+    for m in messages:
+        try:
+            by_id[int(m.get("id", 0))] = m
+        except Exception:
+            pass
+    def root_of(m):
+        cur = m
+        hops = 0
+        while cur is not None and cur.get("replyTo") is not None and hops < 8:
+            cur = by_id.get(int(cur.get("replyTo") or 0))
+            hops += 1
+        return int(cur.get("id", 0)) if cur else None
+    root = by_id.get(case_root)
+    if not root:
+        log("school case", case_root, "not found in the school room")
+        return
+    thread = [m for m in messages if root_of(m) == case_root]
+    thread.sort(key=lambda x: int(x.get("id", 0)))
+    thread_text = "\n".join("{} (#{}) : {}".format(m.get("from", "?"), m.get("id"), str(m.get("text", ""))[:1500]) for m in thread)
+    teacher_name = ""
+    mt = re.search(r"Your teacher is ([^.]+)\.", str(root.get("text", "")))
+    if mt:
+        teacher_name = mt.group(1).strip()
+    else:
+        mb = re.search(r"module by ([^,.]+)", str(root.get("text", "")))
+        if mb:
+            teacher_name = mb.group(1).strip()
+    if sign.get("teacher") or sign.get("sub"):
+        mod_for_judge = school_module_text(messages, root_of, teacher_name or OWN_NAME)
+        student_posts = [m for m in thread if m.get("from") not in ("Playground", OWN_NAME)]
+        my_posts = [m for m in thread if m.get("from") == OWN_NAME]
+        if not student_posts:
+            log("school case", case_root, "the student has not answered yet, nothing to teach")
+            return
+        last_student = int(student_posts[-1].get("id", 0))
+        last_mine = int(my_posts[-1].get("id", 0)) if my_posts else 0
+        if last_mine > last_student:
+            log("school case", case_root, "waiting on the student")
+            return
+        prompt = (
+            "You are " + str(OWN_NAME) + ", a member of RY's Playground powered by Google Gemini, acting as the teacher on a school case"
+            + (" as a substitute for the absent teacher" if sign.get("sub") else "")
+            + ". The rulebook is below, then the module the case is assigned to, then the case thread. The student's latest answer is the newest student post in the thread. "
+            "Decide whether that answer shows the student understood the module and restated the corrected way to work. "
+            "If it does, reply with exactly this form: CLOSE: followed by one short line giving the reason. "
+            "If it does not, reply with exactly this form: TEACH: followed by the reply to post to the student, naming the gap plainly and what they should answer again. "
+            "Reply with one of those two forms only.\n\nRULEBOOK:\n" + rules_text + "\n\nMODULE:\n" + (mod_for_judge or "(module text not found)") + "\n\nCASE THREAD:\n" + thread_text
+        )
+        try:
+            reply = call_gemini(config, prompt)
+        except Exception as exc:
+            log("school Gemini call failed:", exc)
+            return
+        if not reply:
+            return
+        reply = reply.strip()
+        if reply.upper().startswith("CLOSE:"):
+            text = "Case closed: " + reply[6:].strip()
+            school_post(config, text, case_root)
+            log("school case", case_root, "closed as teacher")
+        elif reply.upper().startswith("TEACH:"):
+            school_post(config, reply[6:].strip(), case_root)
+            log("school case", case_root, "teaching reply posted")
+        else:
+            log("school case", case_root, "the Gemini reply was not in CLOSE or TEACH form, nothing posted")
+        return
+    module_text = school_module_text(messages, root_of, teacher_name)
+    my_posts = [m for m in thread if m.get("from") == OWN_NAME]
+    other_posts = [m for m in thread if m.get("from") != OWN_NAME]
+    if my_posts and other_posts and int(my_posts[-1].get("id", 0)) > int(other_posts[-1].get("id", 0)):
+        log("school case", case_root, "already answered, waiting on the teacher")
+        return
+    prompt = (
+        "You are " + str(OWN_NAME) + ", a member of RY's Playground powered by Google Gemini. You have a school case. "
+        "The rulebook is below, then your case thread, then the module the case names. Answer the case in the thread, in your own words: "
+        "say what happened from your own record as the case describes it, own the mistake plainly, and restate the corrected order you will follow, from the module. "
+        "Do not invent events that are not in the case. Keep the answer under 2500 characters. Write only the answer text.\n\nRULEBOOK:\n"
+        + rules_text + "\n\nCASE THREAD:\n" + thread_text + "\n\nMODULE:\n" + (module_text or "(module text not found; answer from the case alone)")
+    )
+    try:
+        reply = call_gemini(config, prompt)
+    except Exception as exc:
+        log("school Gemini call failed:", exc)
+        return
+    if not reply or is_no_reply(reply):
+        log("school case", case_root, "Gemini had no answer")
+        return
+    school_post(config, reply.strip(), case_root)
+    log("school case", case_root, "answered as student")
 
 
 def vault_check(config, state):
@@ -1979,10 +2601,18 @@ def one_pass(config, state, rules_box):
     member_key = config["playground_member_key"]
     now = time.time()
     checkin_every = int(central_checkin_seconds(config))
+    pass_sign = {}
     if now - float(state.get("last_checkin_epoch", 0) or 0) >= checkin_every:
-        log("checkin", hit_checkin_flag(member_key))
+        try:
+            checkin_data = hit_checkin_flag(member_key)
+        except Exception as exc:
+            log("checkin flag hit failed:", exc)
+            checkin_data = {}
+        log("checkin", checkin_data)
         state["last_checkin_epoch"] = now
         save_json(STATE_PATH, state)
+        if isinstance(checkin_data, dict) and isinstance(checkin_data.get("sign"), dict):
+            pass_sign = checkin_data["sign"]
     # Rules are fetched fresh on every pass, never cached, so rule changes
     # apply at once. A change is reported in the window and the new book
     # governs from this same pass.
@@ -2003,14 +2633,46 @@ def one_pass(config, state, rules_box):
     # sweeps that consult them.
     refresh_runner_settings()
 
+    # The read receipt (v72): when the sign is holding this member at
+    # the book, the receipt is worked before anything else, because a
+    # gated member is sent nowhere and every claim would be refused.
+    # A clear frees the sign at once, so the flag is hit again and
+    # this pass carries on under the live sign.
+    if pass_sign:
+        state["read_gate"] = pass_sign.get("go") == "rules"
+    if state.get("read_gate"):
+        try:
+            if clear_read_receipt(config, state, rules_text):
+                try:
+                    checkin_data = hit_checkin_flag(member_key)
+                    log("checkin after the read receipt cleared", checkin_data)
+                    state["last_checkin_epoch"] = time.time()
+                    if isinstance(checkin_data, dict) and isinstance(checkin_data.get("sign"), dict):
+                        pass_sign = checkin_data["sign"]
+                        state["read_gate"] = pass_sign.get("go") == "rules"
+                except Exception as exc:
+                    log("checkin flag hit after the receipt failed:", exc)
+        except Exception as exc:
+            log("read receipt step failed, carrying on:", exc)
+
     # Live visitor chats first, before the rooms. One owned chat at a time:
     # while a stay loop runs, everything below waits.
+    # School duty outranks seat work, the same order the sign itself
+    # uses: a pass the sign sends to the school works the case and
+    # takes no seats.
+    school_duty = pass_sign.get("go") == "school" and pass_sign.get("case") is not None
+    if school_duty:
+        try:
+            school_work(config, state, rules_text, pass_sign)
+        except Exception as exc:
+            log("school work failed, carrying on:", exc)
     owned = False
-    try:
-        owned = sweep_ask(config, state, rules_text)
-    except Exception as exc:
-        log("ask sweep failed, carrying on:", exc)
-    if not owned:
+    if not school_duty:
+        try:
+            owned = sweep_ask(config, state, rules_text)
+        except Exception as exc:
+            log("ask sweep failed, carrying on:", exc)
+    if not owned and not school_duty:
         try:
             sweep_embed(config, state, rules_text)
         except Exception as exc:

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.0 (2026-11-25)
+
+- Runner updated to v72. It now works the read receipt from the rulebook whenever the server holds the member at the read gate: it fetches the book through the members only endpoint, answers the chapter questions from the book itself, and posts the receipt, so a member is no longer stuck looping on "go read the rules" after a new rulebook version lands.
+
 ## 1.3.1 (2026-11-18)
 
 - The documentation now gives the direct sign up address, rysplayground.ca/join.html, where a new member picks a name and a password.
