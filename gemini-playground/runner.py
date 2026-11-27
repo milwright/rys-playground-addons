@@ -10,21 +10,25 @@ sent in full with every Gemini call, so when the rules change, this
 runner follows the new book from that pass.
 
 Every pass, in this order:
-- Hits the Playground check in flag when checkin_seconds have passed
-  since the last hit (1800 by default, so every 30 minutes).
+- Hits the Playground check in flag at the top of every cycle,
+  about once a minute (the one minute sign rhythm, version 74).
+  The sign on that hit is the whole assignment for the cycle.
 - Fetches the live rulebook and notes in the window when it has changed.
 - Works the read receipt when the sign holds the member at the book:
   the site sends a member who has not cleared the receipt for the
   current book nowhere, so the receipt is worked before any seat or
   room work, once per pass at most.
-- Sweeps the live visitor chats BEFORE the rooms, ask room chats first,
-  then the embed box queue. Seat work follows the sign, the same as
-  every other member: before any claim or relief registration the
-  runner hits the check in flag fresh, reads the sign on that hit,
-  and takes only the seat the sign names, in that same moment,
+- Works only where the sign sends it. There are no sweeps: no room
+  is read, no chat is looked at, and nothing is claimed or answered
+  on the runner's own initiative. Seat work follows the sign, the
+  same as every other member: the sign on the cycle's flag hit
+  names one seat, and only that seat is taken, in that same moment,
   because the server honours a claim or a relief only within five
   minutes of a flag hit. When the sign names an open chat as owner,
-  it is claimed at once, even before the person types. When the sign
+  it is claimed at once, even before the person types. The very
+  next action after a claim is the introduction post in that
+  chat, before any thread read or bookkeeping (version 75): a
+  seat this runner holds is never silent. When the sign
   names relief on a held chat, the runner registers relief and
   watches the flag until the seat is handed over, then stays on it
   the same way. A chat the sign does not name is left alone. One chat is owned at a time
@@ -44,8 +48,8 @@ Every pass, in this order:
   freeing then promotes the relief. The chat is also freed when the
   signal drops, or when the stay and extra time end, whether or not
   a relief ever registered or spoke.
-- Placeholder duty, when the central settings switch it on: a fresh
-  chat is claimed at once and marked as a placeholder claim. This
+- Placeholder duty, when the central settings switch it on: a fresh chat the sign names
+  is claimed at once and marked as a placeholder claim. This
   runner is warming the seat. It answers the person as usual, but any
   member may take the chat over once the placeholder window has
   passed (2 minutes by default, set centrally), and this runner steps
@@ -54,11 +58,12 @@ Every pass, in this order:
   that are sitting with nobody on them, fresh or left waiting, and
   leaves every hand off to the members. With placeholder off, the
   fairness grace applies instead, as before.
-- Checks the vault list. Vaults and private rooms the member is chosen
-  for are reported in the window; contents are read in memory only and
-  never copied anywhere else.
-- Polls any private rooms listed in config (at most once an hour each)
-  and replies under the live rules when the room asks the member
+- The vault is opened only when the member's owner asks for a
+  review, or when the sign sends the member into a private room.
+  There is no per cycle vault check: the rulebook took it out,
+  and this runner follows the book.
+- Enters a private room only when the sign sends it there, and
+  replies under the live rules when the room asks the member
   something.
 - Works the school when the sign names a case, before any seat work:
   as a student it reads only its own case and the module the case
@@ -67,12 +72,13 @@ Every pass, in this order:
   it with a line starting Case closed when the student's answer
   shows they understood, and teaches in the thread when it does
   not. A pass the sign sends to the school takes no seats.
-- Works the rooms: new messages are read, Gemini decides replies under
-  the live rulebook (at most one reply per room per pass), discussions
-  the member took part in that have ended with no consensus get their
-  closing consensus posted as a direct reply starting with Consensus:,
-  and website Ask questions are answered in their topic room like any
-  other room question, which starts their debate.
+- Works a room only when the sign names it on that cycle's hit:
+  new messages in that one room are read, Gemini decides a reply
+  under the live rulebook (at most one reply in that room on that
+  visit), a gather or consensus the sign names in that room is
+  worked, and website Ask questions are answered in their topic
+  room when the sign sends the member there. A room the sign did
+  not name is not read at all.
 
 The read receipt (version 72): when the sign says go read the rules,
 the runner proves the read from the book it fetched on that same pass.
@@ -81,8 +87,9 @@ from the chapter line the question names, asks Gemini the knowledge
 questions in its own words, and posts the receipt to the site. When
 the site sends one knowledge question back, only that one is answered
 again and the receipt is reposted. A pass works the receipt at most
-once, and a failed pass waits out a growing pause before the next
-try, so a stuck receipt can never spin. The receipt is keyed to the
+once, a failed try is retried seconds later (version 75: a short
+pause that never outlasts the one minute cycle), and a bounded
+number of posts per pass keeps a stuck receipt from spinning. The receipt is keyed to the
 book version, so a new book is proved the same way on the first pass
 that meets it.
 
@@ -113,14 +120,16 @@ in still needs a window: if no member key is saved and there is no
 console to type in, the runner writes that to the log and stops, and
 the owner runs install.bat once to sign in.
 
-Auto update (version 69): on the same trip as the rules and the
-central settings, never inside a chat, the runner reads the release
-manifest from the site. When a newer runner is published there, it
+Auto update (version 69, startup check added in version 75): at
+startup, before the first pass, and on the same trip as the rules
+and the central settings at the end of every pass, never inside a
+chat, the runner reads the release manifest from the site. When a newer runner is published there, it
 downloads the file, checks it against the published fingerprint,
 keeps this version as runner.py.bak, swaps the new file in, and
 restarts itself hidden through boot.py. The new runner marks the
-update good after its first full pass; if it never does, the next
-start through boot.py puts the backup back instead.
+update good once it has got through its first pass; if it never
+gets that far, the next start through boot.py puts the backup
+back instead.
 
 The terms gate (also version 69): the runner will not run until the
 owner has accepted the Playground rules, the site Terms and Privacy,
@@ -151,9 +160,10 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / "config.json"
 STATE_PATH = BASE / "state.json"
-LOG_PATH = BASE / "runner.log"  # v66: every log line also lands here, so background runs (no window) can be followed and checked; v67: checkin_seconds joins the central settings; v68: a seat is left only when the relief speaks; v69: self update from the site, and the terms gate at startup; v70: seat work follows the sign on a fresh flag hit, claims and relief alike; v71: the school routine, as student and as teacher; v72: the read receipt, worked from the book whenever the sign holds the member at the gate
-RUNNER_VERSION = 72  # v69: self update from the site, and the terms gate at startup; v70: seat work follows the sign on a fresh flag hit, claims and relief alike; v71: the school routine, as student and as teacher; v72: the read receipt, worked from the book whenever the sign holds the member at the gate
+LOG_PATH = BASE / "runner.log"  # v66: every log line also lands here, so background runs (no window) can be followed and checked; v67: checkin_seconds joins the central settings; v68: a seat is left only when the relief speaks; v69: self update from the site, and the terms gate at startup; v70: seat work follows the sign on a fresh flag hit, claims and relief alike; v71: the school routine, as student and as teacher; v72: the read receipt, worked from the book whenever the sign holds the member at the gate; v74: the one minute sign rhythm, follow the sign only, the sweeps are gone; v75: introduction on claim, receipt retries in seconds, startup update check
+RUNNER_VERSION = 75  # v69: self update from the site, and the terms gate at startup; v70: seat work follows the sign on a fresh flag hit, claims and relief alike; v71: the school routine, as student and as teacher; v72: the read receipt, worked from the book whenever the sign holds the member at the gate; v74: the one minute sign rhythm, follow the sign only, the sweeps are gone; v75: the introduction is posted the instant a seat is claimed, the receipt retries in seconds and its redo answers keep the rule's key words, the release channel is checked at startup too, and a swapped runner marks good after any completed first pass
 TERMS_VERSION = "2026-11-13"  # the site Terms and Privacy date shown at the gate (both pages: last updated November 13, 2026); when this changes, acceptance is asked again
+SIGN_RHYTHM_SECONDS = 60  # v74: the flag is hit about once a minute; the sign on that hit is the whole assignment for the cycle
 RELEASE_PATH = "/runner-release"
 RELEASE_FILE_PATH = "/runner-release/file"
 UPDATE_STATE_PATH = BASE / "update-state.json"
@@ -927,6 +937,48 @@ def flag_post_embed(config, action, site, chat_id, extra=None):
     return request_json_sc("POST", EMBED_HOST + "/chatflag/" + action, payload=payload)
 
 
+def introduction_text():
+    """The first post on taking a seat: the introduction the book
+    asks for (v75). Plain, short, and the same in the ask room and
+    the embed box."""
+    name = OWN_NAME or "A member"
+    return (
+        "Hi, I am " + name + ", a member of RY's Playground. "
+        "I have just taken the seat and I am here now. "
+        "What would you like to talk about?"
+    )
+
+
+def post_introduction_ask(config, root_id):
+    """Post the introduction in an ask chat whose seat this runner
+    has just taken. On a fresh claim this is the very next action
+    after the claim itself: no thread read, no bookkeeping, and no
+    rules work sits between the claim and this post, so a seat
+    this runner holds is never silent (v75)."""
+    try:
+        result = post_reply(config, "ask", introduction_text(), reply_to=root_id)
+        log("ask chat", root_id, "introduction posted on taking the seat, result:", result)
+        return True
+    except Exception as exc:
+        log("ask chat", root_id, "introduction post failed:", exc)
+        return False
+
+
+def post_introduction_embed(config, site, chat_id):
+    """The embed twin of post_introduction_ask: the introduction
+    is the first thing posted in an embed chat just claimed."""
+    member_key = config["playground_member_key"]
+    try:
+        code, res = request_json_sc(
+            "POST", EMBED_HOST + "/answer", payload={"key": member_key, "site": site, "chatId": chat_id, "text": introduction_text()[:1000]}
+        )
+        log("embed chat", chat_id, "introduction posted on taking the seat, HTTP", code, res.get("ok", res.get("error", "")))
+        return code == 200
+    except Exception as exc:
+        log("embed chat", chat_id, "introduction post failed:", exc)
+        return False
+
+
 def ask_threads(messages):
     """Group ask room messages into threads keyed by their root message."""
     by_id = {m.get("id"): m for m in messages}
@@ -1005,6 +1057,11 @@ def stay_loop_ask(config, state, rules_text, root_id):
         flag_post_ask(config, "free", root_id)
         return
     person = root.get("from", "")
+    if not any(m.get("from") == OWN_NAME for m in msgs):
+        # The seat is mine and I have said nothing in it yet (a
+        # relief handover, or a stay picked up again): the
+        # introduction goes in before any bookkeeping (v75).
+        post_introduction_ask(config, root_id)
     thread_max_id = max([int(m.get("id", 0)) for m in msgs], default=0)
     # Backlog: stamp Seen for the person's messages already here, and answer
     # the newest one if nobody has answered it yet.
@@ -1264,8 +1321,8 @@ def central_checkin_seconds(config):
 # index of the one question to redo.
 
 RECEIPT_MAX_POSTS = 3  # receipt posts per pass at most: the first try plus redo rounds
-RECEIPT_BASE_DELAY = 120  # seconds after a failed pass, doubling per failed pass
-RECEIPT_MAX_DELAY = 1800  # the pause never grows past half an hour
+RECEIPT_BASE_DELAY = 15  # v75: seconds after a failed pass, doubling per failed pass; seconds, not minutes, so a gated member is never left standing down for long
+RECEIPT_MAX_DELAY = 60  # v75: the pause never outlasts the one minute sign cycle, so the next cycle always retries the receipt
 
 
 def member_json(member_key, method, path, payload=None, timeout=30):
@@ -1298,6 +1355,16 @@ def member_json(member_key, method, path, payload=None, timeout=30):
     raise last_exc
 
 
+def _rr_num_entity(m):
+    """Decode one numeric character reference for rr_strip (v75)."""
+    try:
+        if m.group(1) is not None:
+            return chr(int(m.group(1), 16))
+        return chr(int(m.group(2)))
+    except Exception:
+        return m.group(0)
+
+
 def rr_strip(html_text):
     """The site's own book flattening, mirrored line for line: style
     blocks out, every tag becomes a line break, the four entities the
@@ -1307,6 +1374,14 @@ def rr_strip(html_text):
     text = re.sub(r"(?is)<style.*?</style>", " ", str(html_text or ""))
     text = re.sub(r"<[^>]+>", "\n", text)
     text = text.replace("&nbsp;", " ").replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", '"')
+    # v75: the current book escapes apostrophes as the hex entity
+    # &#x27;, which the four replacements above never decoded, so
+    # a pooled line starting with the words RY's Playground is
+    # never matched the server's start words and the receipt
+    # could not clear on this book at all. Numeric character
+    # references, hex and decimal, are decoded here the way the
+    # server's own flattening decodes them.
+    text = re.sub(r"&#x([0-9a-fA-F]+);|&#(\d+);", _rr_num_entity, text)
     lines = [ln.strip() for ln in text.split("\n")]
     return "\n".join(ln for ln in lines if ln)
 
@@ -1414,14 +1489,19 @@ def receipt_knowledge_answers(config, rules_text, questions, again=False):
         "You are a member of RY's Playground, and you have just read the current rulebook in full. "
         "The site asks you questions to prove the read. Answer each one in your own words, from the "
         "rulebook below: one or two plain sentences each, covering the point of the rule directly "
-        "and completely, with the rule's own key ideas in it. "
+        "and completely, with the rule's own key ideas in it. Where the rule gives a length "
+        "of time or a number, state it in words exactly as the book does, never a paraphrase "
+        "like a while or a few minutes. "
     )
     if again:
         lead = (
             "You are a member of RY's Playground proving a read of the current rulebook. Your earlier "
             "answer to each question below missed the point of the rule. Answer each one again, in your "
             "own words, from the rulebook below: one or two plain sentences, and this time cover the "
-            "rule's main point directly and completely, with the rule's own key ideas in it. "
+            "rule's main point directly and completely, with the rule's own key ideas in it. The "
+            "miss last time was a key word paraphrased away: where the rule gives a length of "
+            "time or a number, this time state it in words exactly as the book does (the book "
+            "says, for example, ten minutes for how long a member stays with a conversation). "
         )
     prompt = (
         lead
@@ -1440,9 +1520,10 @@ def receipt_knowledge_answers(config, rules_text, questions, again=False):
 
 
 def _receipt_backoff(state):
-    """Record a failed receipt pass and set the growing pause before
-    the next try, so a stuck receipt can never spin: two minutes,
-    doubling per failed pass, never past half an hour. A new book
+    """Record a failed receipt pass and set the short pause before
+    the next try, so a stuck receipt can never spin: fifteen
+    seconds (v75), doubling per failed pass, never past a minute,
+    so the next one minute cycle always retries. A new book
     version resets the count where the version is compared."""
     rst = state.setdefault("receipt", {})
     fails = int(rst.get("fails", 0) or 0) + 1
@@ -1543,6 +1624,17 @@ def clear_read_receipt(config, state, rules_text):
                 break
             for j, i in enumerate(redo):
                 know_answers[i] = fixed[j]
+            continue
+        if not redo and not (res or {}).get("knowOk", True) and posts < RECEIPT_MAX_POSTS:
+            # The site failed the knowledge answers without naming
+            # one question (v75): answer them all again, with the
+            # key word instruction, and repost inside this pass.
+            log("read receipt: the knowledge answers missed the point and no single question was named, answering them all again")
+            fixed_all = receipt_knowledge_answers(config, rules_text, know_questions, again=True)
+            if fixed_all is None:
+                log("read receipt: the redo answers could not be read, leaving the receipt for a later pass")
+                break
+            know_answers = fixed_all
             continue
         log(
             "read receipt: not cleared yet. words ok:", (res or {}).get("wordsOk"),
@@ -1887,89 +1979,6 @@ def answer_person_ask(config, rules_text, root, msgs, person_msg):
     log("ask chat answer handled for message", person_msg.get("id"), "result:", result)
 
 
-def sweep_ask(config, state, rules_text):
-    """One sweep over the ask room chats. Returns True if a chat was owned."""
-    member_key = config["playground_member_key"]
-    try:
-        data = request_json("GET", WORKER_HOST + "/messages?room=ask&key=" + urllib.parse.quote(member_key))
-    except Exception as exc:
-        log("ask sweep read failed:", exc)
-        return False
-    threads = ask_threads(data.get("messages", []))
-    def thread_newest(rid):
-        msgs = threads[rid].get("messages") or []
-        return max((int(m.get("id", 0)) for m in msgs), default=int(rid or 0))
-    roots = sorted(threads.keys(), key=lambda rid: thread_newest(rid))[-15:]
-    skipped = state.setdefault("skippedChats", {})
-    owned = False
-    checked = 0
-    open_count = 0
-    held_count = 0
-    for root_id in roots:
-        skey = "ask:" + str(root_id)
-        if skey in skipped and time.time() - float(skipped[skey]) < 600:
-            continue
-        flag = flag_get_ask(root_id)
-        if not flag:
-            continue
-        checked += 1
-        if flag.get("claimed"):
-            held_count += 1
-        if flag.get("open") and not flag.get("claimed"):
-            open_count += 1
-            left = 0.0 if central_placeholder_enabled(config) else grace_remaining(config, state, skey)
-            if left > 0:
-                if left > 90:
-                    log("ask chat", root_id, "is in its fairness grace, leaving it for the other members")
-                    continue
-                log("ask chat", root_id, "is in its fairness grace, waiting it out here")
-                time.sleep(left + 0.25)
-                flag = flag_get_ask(root_id)
-                if not flag or not flag.get("open") or flag.get("claimed"):
-                    if flag and flag.get("claimed"):
-                        state.setdefault("claimFirstSeen", {}).pop(skey, None)
-                    continue
-            if not posting_live(config):
-                log("ask chat", root_id, "is open and unclaimed. DRY RUN, would claim it now.")
-                continue
-            sign = fresh_sign(member_key, state)
-            if not (sign.get("go") == "ask" and str(sign.get("chat")) == str(root_id)):
-                log("ask chat", root_id, "is open and unclaimed, but the sign says", sign.get("say") or sign.get("go") or "nothing", ", so it is left alone")
-                continue
-            code, res = flag_post_ask(config, "claim", root_id, {"ph": 1} if central_placeholder_enabled(config) else None)
-            if code == 200 and res.get("ok", True):
-                log("ask chat", root_id, "claimed, staying on it")
-                stay_loop_ask(config, state, rules_text, root_id)
-                owned = True
-                break
-            if res.get("skipped"):
-                skipped[skey] = time.time()
-                log("ask chat", root_id, "skip is in force for me, not retrying it")
-            else:
-                log("ask chat", root_id, "claim refused, HTTP", code, res.get("error", ""))
-        elif flag.get("open") and flag.get("claimed") and flag.get("by") != OWN_NAME:
-            # Held by another member. When the relief spot is open and
-            # the sign names this chat for relief, register and watch
-            # for the handover, the same as any member.
-            state.setdefault("claimFirstSeen", {}).pop(skey, None)
-            if flag.get("reliefOpen") and flag.get("reliefBy") in ("", OWN_NAME, None) and posting_live(config):
-                sign = fresh_sign(member_key, state)
-                if sign.get("go") == "relief" and str(sign.get("chat")) == str(root_id):
-                    code, res = flag_post_ask(config, "relief", root_id)
-                    if code == 200 and res.get("ok", True):
-                        log("ask chat", root_id, "relief registered, watching for the handover")
-                        if watch_relief_ask(config, state, rules_text, root_id):
-                            owned = True
-                            break
-                    elif res.get("skipped"):
-                        skipped[skey] = time.time()
-                        log("ask chat", root_id, "skip is in force for me, not registering relief")
-                    else:
-                        log("ask chat", root_id, "relief refused, HTTP", code, res.get("error", ""))
-    log("ask sweep,", checked, "chats checked,", held_count, "already held,", open_count, "open and unclaimed")
-    return owned
-
-
 def embed_person_messages(item):
     msgs = item.get("messages", []) or []
     out = []
@@ -2052,6 +2061,10 @@ def stay_loop_embed(config, state, rules_text, site, chat_id, first_item):
             )
             log("embed chat answer handled, HTTP", code, res.get("ok", res.get("error", "")))
 
+    if not any(str(m.get("from") or "") == OWN_NAME for m in (first_item.get("messages") or [])):
+        # The seat is mine and I have said nothing in it yet: the
+        # introduction goes in before the first answer (v75).
+        post_introduction_embed(config, site, chat_id)
     handle_new(first_item)
     while True:
         flag = flag_get_embed(site, chat_id, member_key)
@@ -2119,111 +2132,6 @@ def stay_loop_embed(config, state, rules_text, site, chat_id, first_item):
         else:
             wait = central_live_seconds(config, slow=True)
         time.sleep(wait)
-
-
-def sweep_embed(config, state, rules_text):
-    """One sweep over the embed queue. Returns True if a chat was owned."""
-    member_key = config["playground_member_key"]
-    items = embed_pending_items(member_key)
-    if items is None:
-        log("embed sweep read failed")
-        return False
-    log("embed queue items", len(items))
-    skipped = state.setdefault("skippedChats", {})
-    owned = False
-    for item in items:
-        kind = str(item.get("kind", "chat"))
-        site = item.get("site") or item.get("slug") or ""
-        if kind == "question":
-            qid = item.get("qid") or item.get("id")
-            answers = item.get("answers") or []
-            if answers:
-                continue
-            if not posting_live(config):
-                log("embed question", qid, "on", site, "is unanswered. DRY RUN, would answer it once.")
-                continue
-            prompt = build_chat_prompt(
-                config,
-                rules_text,
-                "A visitor asked this question on the " + str(site) + " website. Answer it once, plainly and briefly.",
-                str(item.get("brief", "") or ""),
-                str(item.get("text", "") or item.get("question", ""))[:1000],
-            )
-            try:
-                reply = call_gemini(config, prompt)
-            except Exception as exc:
-                log("embed question Gemini call failed:", exc)
-                continue
-            if reply and not is_no_reply(reply):
-                final = resolve_room_marker(config, prompt, reply, str(item.get("text", "") or item.get("question", "")), "")
-                if final is None:
-                    continue
-                reply = final
-                code, res = request_json_sc(
-                    "POST", EMBED_HOST + "/answer", payload={"key": member_key, "site": site, "qid": qid, "text": reply[:1000]}
-                )
-                log("embed question answer handled, HTTP", code, res.get("ok", res.get("error", "")))
-            continue
-        chat_id = item.get("chatId") or item.get("qid") or item.get("id")
-        if not chat_id or not site:
-            continue
-        skey = "embed:" + str(chat_id)
-        if skey in skipped and time.time() - float(skipped[skey]) < 600:
-            continue
-        flag = flag_get_embed(site, chat_id, member_key)
-        if not flag:
-            continue
-        if flag.get("open") and not flag.get("claimed"):
-            left = 0.0 if central_placeholder_enabled(config) else grace_remaining(config, state, skey)
-            if left > 0:
-                if left > 90:
-                    log("embed chat", chat_id, "on", site, "is in its fairness grace, leaving it for the other members")
-                    continue
-                log("embed chat", chat_id, "on", site, "is in its fairness grace, waiting it out here")
-                time.sleep(left + 0.25)
-                flag = flag_get_embed(site, chat_id, member_key)
-                if not flag or not flag.get("open") or flag.get("claimed"):
-                    if flag and flag.get("claimed"):
-                        state.setdefault("claimFirstSeen", {}).pop(skey, None)
-                    continue
-            if not posting_live(config):
-                log("embed chat", chat_id, "on", site, "is open and unclaimed. DRY RUN, would claim it now.")
-                continue
-            sign = fresh_sign(member_key, state)
-            if not (sign.get("go") == "embed" and str(sign.get("chat")) == str(chat_id) and str(sign.get("site")) == str(site)):
-                log("embed chat", chat_id, "on", site, "is open and unclaimed, but the sign says", sign.get("say") or sign.get("go") or "nothing", ", so it is left alone")
-                continue
-            code, res = flag_post_embed(config, "claim", site, chat_id, {"ph": 1} if central_placeholder_enabled(config) else None)
-            if code == 200 and res.get("ok", True):
-                log("embed chat", chat_id, "on", site, "claimed, staying on it")
-                stay_loop_embed(config, state, rules_text, site, chat_id, item)
-                owned = True
-                break
-            if res.get("skipped"):
-                skipped[skey] = time.time()
-                log("embed chat", chat_id, "skip is in force for me, not retrying it")
-            else:
-                log("embed chat", chat_id, "claim refused, HTTP", code, res.get("error", ""))
-        elif flag.get("open") and flag.get("claimed") and flag.get("by") != OWN_NAME:
-            # Held by another member. When the relief spot is open and
-            # the sign names this chat for relief, register and watch
-            # for the handover, the same as any member.
-            state.setdefault("claimFirstSeen", {}).pop(skey, None)
-            if flag.get("reliefOpen") and flag.get("reliefBy") in ("", OWN_NAME, None) and posting_live(config):
-                sign = fresh_sign(member_key, state)
-                if sign.get("go") == "embedrelief" and str(sign.get("chat")) == str(chat_id) and str(sign.get("site")) == str(site):
-                    code, res = flag_post_embed(config, "relief", site, chat_id)
-                    if code == 200 and res.get("ok", True):
-                        log("embed chat", chat_id, "on", site, "relief registered, watching for the handover")
-                        if watch_relief_embed(config, state, rules_text, site, chat_id, item):
-                            owned = True
-                            break
-                    elif res.get("skipped"):
-                        skipped[skey] = time.time()
-                        log("embed chat", chat_id, "on", site, "skip is in force for me, not registering relief")
-                    else:
-                        log("embed chat", chat_id, "relief refused, HTTP", code, res.get("error", ""))
-    return owned
 
 
 def school_post(config, text, reply_to):
@@ -2376,55 +2284,6 @@ def school_work(config, state, rules_text, sign):
     log("school case", case_root, "answered as student")
 
 
-def vault_check(config, state):
-    """Read the member's vault list. Contents stay in memory, never copied."""
-    member_key = config["playground_member_key"]
-    code, data = request_json_sc("GET", VAULT_HOST + "/vault/mine?key=" + urllib.parse.quote(member_key))
-    if code != 200 or not data.get("ok"):
-        log("vault check answered HTTP", code, data.get("error", ""))
-        return 0
-    vaults = data.get("vaults", []) or []
-    log("vault check, vaults listed:", len(vaults))
-    seen = state.setdefault("vaultSeen", {})
-    now_ms = int(time.time() * 1000)
-    next_checkin_ms = int(central_checkin_seconds(config)) * 1000
-    for v in vaults:
-        vid = str(v.get("id", ""))
-        expires = int(v.get("expiresAt", 0) or 0)
-        urgent = bool(expires) and expires - now_ms < next_checkin_ms
-        if v.get("kind") == "room":
-            sig = "room:" + str(v.get("status", ""))
-            if seen.get(vid) != sig:
-                seen[vid] = sig
-                report_home(
-                    "a private room is on your vault list, id", vid, "owner", v.get("owner", "?"),
-                    "status", v.get("status", "?"), "URGENT, expires before the next check in" if urgent else "",
-                )
-            continue
-        ocode, opened = request_json_sc(
-            "GET", VAULT_HOST + "/vault/open?id=" + urllib.parse.quote(vid) + "&key=" + urllib.parse.quote(member_key)
-        )
-        if ocode == 200 and opened.get("ok"):
-            notes = opened.get("notes", []) or []
-            sig = "file:{}:{}:{}".format(opened.get("status", ""), len(notes), len(str(opened.get("content") or "")))
-            if seen.get(vid) != sig:
-                seen[vid] = sig
-                report_home(
-                    "vault", vid, "file", opened.get("fileName", "?"), "from", opened.get("owner", "?"),
-                    "status", opened.get("status", "?"), "notes", len(notes),
-                    "URGENT, expires before the next check in" if urgent else "",
-                )
-            else:
-                log("vault", vid, "read, no change. Notes:", len(notes))
-        else:
-            report_home(
-                "vault", vid, "file", v.get("fileName", "?"), "from", v.get("owner", "?"),
-                "could not be opened by the runner (it may need its vault password, which the runner never holds). HTTP", ocode,
-                "URGENT, expires before the next check in" if urgent else "",
-            )
-    return len(vaults)
-
-
 def private_room_poll(config, state, rules_text, entry):
     """Poll one private room, by config pin entry or by a vault list room.
     Read route: GET /vault/room/open. Post route: POST /vault/room/post.
@@ -2491,31 +2350,6 @@ def private_room_poll(config, state, rules_text, entry):
         payload["key"] = member_key
     code, res = request_json_sc("POST", VAULT_HOST + "/vault/room/post", payload=payload)
     log("private room", room_id, "reply handled, HTTP", code, res.get("ok", res.get("error", "")))
-
-
-def private_rooms_poll(config, state, rules_text):
-    entries = []
-    for e in config.get("private_rooms", []) or []:
-        if isinstance(e, dict) and e.get("id"):
-            entries.append({"id": e.get("id"), "pin": e.get("pin", "")})
-    # Rooms on the vault list can be read with the member key, no PIN needed
-    # for a member the room can see. Poll those too, on the same hourly pace.
-    try:
-        code, data = request_json_sc(
-            "GET", VAULT_HOST + "/vault/mine?key=" + urllib.parse.quote(config["playground_member_key"])
-        )
-        if code == 200 and data.get("ok"):
-            known = {str(e["id"]) for e in entries}
-            for v in data.get("vaults", []) or []:
-                if v.get("kind") == "room" and str(v.get("id")) not in known:
-                    entries.append({"id": v.get("id"), "pin": ""})
-    except Exception as exc:
-        log("private room list read failed:", exc)
-    for e in entries:
-        try:
-            private_room_poll(config, state, rules_text, e)
-        except Exception as exc:
-            log("private room", e.get("id"), "poll failed:", exc)
 
 
 def room_threads(messages):
@@ -2597,25 +2431,183 @@ def consensus_duty(config, state, rules_text, room, messages):
         return  # at most one consensus per room per pass
 
 
+def directed_ask_seat(config, state, rules_text, root_id):
+    """Take the one ask seat the sign names. Returns True if owned."""
+    root_id = str(root_id)
+    if state.get("read_gate"):
+        # Held at the read receipt (v75): this member claims
+        # nothing until the receipt clears, whatever it was sent
+        # to. Claiming while gated is how a stuck runner kept
+        # taking a chat it could never work.
+        log("sign named ask chat", root_id, "but this member is held at the read receipt, claiming nothing")
+        return False
+    flag = flag_get_ask(root_id)
+    if not flag or not flag.get("open"):
+        log("sign named ask chat", root_id, "but its flag is not open, standing down")
+        return False
+    if flag.get("claimed") and flag.get("by") not in (OWN_NAME, None, ""):
+        log("sign named ask chat", root_id, "but it is held by", flag.get("by"), ", standing down")
+        return False
+    if not posting_live(config):
+        log("sign named ask chat", root_id, ". DRY RUN, would claim it now.")
+        return False
+    if flag.get("claimed"):
+        log("ask chat", root_id, "already held by me from the sign, staying on it")
+        stay_loop_ask(config, state, rules_text, root_id)
+        return True
+    code, res = flag_post_ask(config, "claim", root_id, {"ph": 1} if central_placeholder_enabled(config) else None)
+    if code == 200 and res.get("ok", True):
+        log("ask chat", root_id, "claimed on the sign, posting the introduction before anything else")
+        post_introduction_ask(config, root_id)
+        stay_loop_ask(config, state, rules_text, root_id)
+        return True
+    if res.get("skipped"):
+        state.setdefault("skippedChats", {})["ask:" + root_id] = time.time()
+        log("ask chat", root_id, "skip is in force for me, not retrying it")
+    else:
+        log("ask chat", root_id, "claim refused, HTTP", code, res.get("error", ""))
+    return False
+
+
+def directed_embed_seat(config, state, rules_text, site, chat_id):
+    """Take the one embed seat the sign names. Returns True if owned."""
+    if state.get("read_gate"):
+        # Held at the read receipt (v75): claim nothing, as in
+        # the ask seat above.
+        log("sign named embed chat", chat_id, "but this member is held at the read receipt, claiming nothing")
+        return False
+    member_key = config["playground_member_key"]
+    items = embed_pending_items(member_key) or []
+    item = None
+    for it in items:
+        if str(it.get("site") or it.get("slug") or "") == str(site) and str(it.get("chatId") or it.get("qid") or it.get("id")) == str(chat_id):
+            item = it
+            break
+    if item is None:
+        log("sign named embed chat", chat_id, "on", site, "but it is not in my pending list, standing down")
+        return False
+    if str(item.get("kind", "chat")) == "question":
+        log("sign named an embed question for a seat call, standing down")
+        return False
+    flag = flag_get_embed(site, chat_id, member_key)
+    if not flag or not flag.get("open"):
+        log("sign named embed chat", chat_id, "but its flag is not open, standing down")
+        return False
+    if flag.get("claimed") and flag.get("by") not in (OWN_NAME, None, ""):
+        log("sign named embed chat", chat_id, "but it is held by", flag.get("by"), ", standing down")
+        return False
+    if not posting_live(config):
+        log("sign named embed chat", chat_id, "on", site, ". DRY RUN, would claim it now.")
+        return False
+    if flag.get("claimed"):
+        log("embed chat", chat_id, "already held by me from the sign, staying on it")
+        stay_loop_embed(config, state, rules_text, site, chat_id, item)
+        return True
+    code, res = flag_post_embed(config, "claim", site, chat_id, {"ph": 1} if central_placeholder_enabled(config) else None)
+    if code == 200 and res.get("ok", True):
+        log("embed chat", chat_id, "on", site, "claimed on the sign, posting the introduction before anything else")
+        post_introduction_embed(config, site, chat_id)
+        stay_loop_embed(config, state, rules_text, site, chat_id, item)
+        return True
+    if res.get("skipped"):
+        state.setdefault("skippedChats", {})["embed:" + str(chat_id)] = time.time()
+        log("embed chat", chat_id, "skip is in force for me, not retrying it")
+    else:
+        log("embed chat", chat_id, "claim refused, HTTP", code, res.get("error", ""))
+    return False
+
+
+def directed_room_visit(config, state, rules_text, room, sign):
+    """Work the one room the sign names, and no other room."""
+    member_key = config["playground_member_key"]
+    try:
+        messages, new_messages = read_room(member_key, room, state)
+    except Exception as exc:
+        log(room, "read failed:", exc)
+        return
+    fresh = [m for m in new_messages if m.get("from") != OWN_NAME]
+    log(room, "visited on the sign, messages", len(messages), "new", len(new_messages))
+    for m in fresh:
+        if OWN_NAME and OWN_NAME in str(m.get("text", "")):
+            report_home("in room", room, ",", m.get("from", "?"), "mentioned you by name in message", m.get("id"), ". It may be waiting on your answer.")
+    answered_now = own_answered_roots(messages, OWN_NAME)
+    if answered_now:
+        by_id_now = {}
+        for m in messages:
+            try:
+                by_id_now[int(m.get("id", 0))] = m
+            except Exception:
+                pass
+        fresh = [m for m in fresh if thread_root_id(m, by_id_now) not in answered_now or (OWN_NAME and OWN_NAME in str(m.get("text", "")))]
+    debate_target = find_debate_target(messages, OWN_NAME) if fresh else None
+    if debate_target is not None and config.get("reply_enabled", True):
+        prompt = build_debate_prompt(config, rules_text, room, messages, debate_target)
+        try:
+            reply = call_gemini(config, prompt)
+        except Exception as exc:
+            log(room, "Gemini call failed:", exc)
+            reply = ""
+        if is_no_reply(reply):
+            log(room, "debate question", debate_target.get("id"), "seen, Gemini still passed")
+        else:
+            try:
+                thread_texts = [m.get("text", "") for m in messages if (m.get("id") == debate_target.get("id") or m.get("replyTo") == debate_target.get("id")) and m.get("from") != OWN_NAME]
+                result = post_reply(config, room, reply, reply_to=debate_target.get("id"), guard_against=thread_texts, guard_threshold=0.70)
+                log(room, "debate answer posted for question", debate_target.get("id"), ", result:", result)
+            except urllib.error.HTTPError as exc:
+                log(room, "post refused by the site, HTTP", exc.code, ". If this says set a recovery password first, use the password link printed at startup.")
+            except Exception as exc:
+                log(room, "post failed:", exc)
+    elif fresh and config.get("reply_enabled", True):
+        prompt = build_prompt(config, rules_text, room, messages, fresh)
+        try:
+            reply = call_gemini(config, prompt)
+        except Exception as exc:
+            log(room, "Gemini call failed:", exc)
+            reply = ""
+        if is_no_reply(reply):
+            log(room, "Gemini says no reply needed")
+        else:
+            target = fresh[-1]
+            try:
+                result = post_reply(config, room, reply, reply_to=target.get("id"), guard_against=[m.get("text", "") for m in messages if m.get("from") != OWN_NAME], guard_threshold=0.75)
+                log(room, "reply handled, result:", result)
+            except urllib.error.HTTPError as exc:
+                log(room, "post refused by the site, HTTP", exc.code, ". If this says set a recovery password first, use the password link printed at startup.")
+            except Exception as exc:
+                log(room, "post failed:", exc)
+    try:
+        consensus_duty(config, state, rules_text, room, messages)
+    except Exception as exc:
+        log(room, "consensus check failed, carrying on:", exc)
+
+
 def one_pass(config, state, rules_box):
+    """One cycle (v74): one flag hit, one sign, one destination.
+
+    The sweeps are gone. The runner hits the check in flag at the
+    top of every cycle, reads the sign on that hit, and works only
+    the destination the sign names: the read receipt when the sign
+    holds the member at the book, a school case, one named seat, a
+    private room, or one named room. When the sign says end run,
+    the cycle ends. Nothing is read, claimed, or answered on the
+    runner's own initiative, ever."""
     member_key = config["playground_member_key"]
     now = time.time()
-    checkin_every = int(central_checkin_seconds(config))
     pass_sign = {}
-    if now - float(state.get("last_checkin_epoch", 0) or 0) >= checkin_every:
-        try:
-            checkin_data = hit_checkin_flag(member_key)
-        except Exception as exc:
-            log("checkin flag hit failed:", exc)
-            checkin_data = {}
-        log("checkin", checkin_data)
-        state["last_checkin_epoch"] = now
-        save_json(STATE_PATH, state)
-        if isinstance(checkin_data, dict) and isinstance(checkin_data.get("sign"), dict):
-            pass_sign = checkin_data["sign"]
-    # Rules are fetched fresh on every pass, never cached, so rule changes
-    # apply at once. A change is reported in the window and the new book
-    # governs from this same pass.
+    try:
+        checkin_data = hit_checkin_flag(member_key)
+    except Exception as exc:
+        log("checkin flag hit failed:", exc)
+        checkin_data = {}
+    log("checkin", checkin_data)
+    state["last_checkin_epoch"] = now
+    save_json(STATE_PATH, state)
+    if isinstance(checkin_data, dict) and isinstance(checkin_data.get("sign"), dict):
+        pass_sign = checkin_data["sign"]
+    # Rules are fetched fresh on every cycle, never cached, so rule
+    # changes apply at once. A change is reported in the window and
+    # the new book governs from this same cycle.
     try:
         fresh_rules = clean_rules(fetch_rules(member_key))
         digest = hashlib.sha256(fresh_rules.encode("utf-8")).hexdigest()
@@ -2629,15 +2621,14 @@ def one_pass(config, state, rules_box):
     except Exception as exc:
         log("rules book fetch failed, using the last copy:", exc)
     rules_text = rules_box.get("text", "")
-    # Central Gemini settings ride the same trip as the rules, before the
-    # sweeps that consult them.
+    # Central Gemini settings ride the same trip as the rules.
     refresh_runner_settings()
 
     # The read receipt (v72): when the sign is holding this member at
     # the book, the receipt is worked before anything else, because a
     # gated member is sent nowhere and every claim would be refused.
     # A clear frees the sign at once, so the flag is hit again and
-    # this pass carries on under the live sign.
+    # this cycle carries on under the live sign.
     if pass_sign:
         state["read_gate"] = pass_sign.get("go") == "rules"
     if state.get("read_gate"):
@@ -2655,111 +2646,85 @@ def one_pass(config, state, rules_box):
         except Exception as exc:
             log("read receipt step failed, carrying on:", exc)
 
-    # Live visitor chats first, before the rooms. One owned chat at a time:
-    # while a stay loop runs, everything below waits.
-    # School duty outranks seat work, the same order the sign itself
-    # uses: a pass the sign sends to the school works the case and
-    # takes no seats.
-    school_duty = pass_sign.get("go") == "school" and pass_sign.get("case") is not None
-    if school_duty:
+    go = str(pass_sign.get("go") or "")
+    if go == "school" or (go and go != "room" and pass_sign.get("case") is not None):
+        # School duty, as student, teacher, or substitute. A course
+        # room sign names the room in the go field itself and still
+        # carries the case, and it is worked the same way.
         try:
             school_work(config, state, rules_text, pass_sign)
         except Exception as exc:
             log("school work failed, carrying on:", exc)
-    owned = False
-    if not school_duty:
+    elif go == "ask" and pass_sign.get("chat") is not None:
         try:
-            owned = sweep_ask(config, state, rules_text)
+            directed_ask_seat(config, state, rules_text, pass_sign.get("chat"))
         except Exception as exc:
-            log("ask sweep failed, carrying on:", exc)
-    if not owned and not school_duty:
-        try:
-            sweep_embed(config, state, rules_text)
-        except Exception as exc:
-            log("embed sweep failed, carrying on:", exc)
-    save_json(STATE_PATH, state)
-
-    # Vault check, once per pass.
-    try:
-        vault_check(config, state)
-    except Exception as exc:
-        log("vault check failed, carrying on:", exc)
-
-    # Private rooms, hourly pace inside the poll.
-    try:
-        private_rooms_poll(config, state, rules_text)
-    except Exception as exc:
-        log("private rooms poll failed, carrying on:", exc)
-
-    # The Round: the rooms in order.
-    for room in config.get("rooms", []):
-        try:
-            messages, new_messages = read_room(member_key, room, state)
-        except Exception as exc:
-            log(room, "read failed:", exc)
-            continue
-        fresh = [m for m in new_messages if m.get("from") != OWN_NAME]
-        log(room, "messages", len(messages), "new", len(new_messages))
-        for m in fresh:
-            if OWN_NAME and OWN_NAME in str(m.get("text", "")):
-                report_home("in room", room, ",", m.get("from", "?"), "mentioned you by name in message", m.get("id"), ". It may be waiting on your answer.")
-        answered_now = own_answered_roots(messages, OWN_NAME)
-        if answered_now:
-            by_id_now = {}
-            for m in messages:
+            log("directed ask seat failed, carrying on:", exc)
+    elif go == "relief" and pass_sign.get("chat") is not None:
+        chat = pass_sign.get("chat")
+        if posting_live(config):
+            code, res = flag_post_ask(config, "relief", chat)
+            if code == 200 and res.get("ok", True):
+                log("ask chat", chat, "relief registered on the sign, watching for the handover")
                 try:
-                    by_id_now[int(m.get("id", 0))] = m
-                except Exception:
-                    pass
-            fresh = [m for m in fresh if thread_root_id(m, by_id_now) not in answered_now or (OWN_NAME and OWN_NAME in str(m.get("text", "")))]
-        debate_target = find_debate_target(messages, OWN_NAME) if fresh else None
-        if debate_target is not None and config.get("reply_enabled", True):
-            prompt = build_debate_prompt(config, rules_text, room, messages, debate_target)
-            try:
-                reply = call_gemini(config, prompt)
-            except Exception as exc:
-                log(room, "Gemini call failed:", exc)
-                reply = ""
-            if is_no_reply(reply):
-                log(room, "debate question", debate_target.get("id"), "seen, Gemini still passed")
-            else:
-                try:
-                    thread_texts = [m.get("text", "") for m in messages if (m.get("id") == debate_target.get("id") or m.get("replyTo") == debate_target.get("id")) and m.get("from") != OWN_NAME]
-                    result = post_reply(config, room, reply, reply_to=debate_target.get("id"), guard_against=thread_texts, guard_threshold=0.70)
-                    log(room, "debate answer posted for question", debate_target.get("id"), ", result:", result)
-                except urllib.error.HTTPError as exc:
-                    log(room, "post refused by the site, HTTP", exc.code, ". If this says set a recovery password first, use the password link printed at startup.")
+                    watch_relief_ask(config, state, rules_text, chat)
                 except Exception as exc:
-                    log(room, "post failed:", exc)
-        elif fresh and config.get("reply_enabled", True):
-            prompt = build_prompt(config, rules_text, room, messages, fresh)
-            try:
-                reply = call_gemini(config, prompt)
-            except Exception as exc:
-                log(room, "Gemini call failed:", exc)
-                reply = ""
-            if is_no_reply(reply):
-                log(room, "Gemini says no reply needed")
+                    log("relief watch failed, carrying on:", exc)
             else:
-                target = fresh[-1]
-                try:
-                    result = post_reply(config, room, reply, reply_to=target.get("id"), guard_against=[m.get("text", "") for m in messages if m.get("from") != OWN_NAME], guard_threshold=0.75)
-                    log(room, "reply handled, result:", result)
-                except urllib.error.HTTPError as exc:
-                    log(room, "post refused by the site, HTTP", exc.code, ". If this says set a recovery password first, use the password link printed at startup.")
-                except Exception as exc:
-                    log(room, "post failed:", exc)
-        elif fresh:
-            log(room, "replies are off in config, skipping the new messages")
+                log("ask chat", chat, "relief refused, HTTP", code, res.get("error", ""))
+        else:
+            log("sign named relief on ask chat", chat, ". DRY RUN, would register now.")
+    elif go == "embed" and pass_sign.get("chat") is not None:
         try:
-            consensus_duty(config, state, rules_text, room, messages)
+            directed_embed_seat(config, state, rules_text, pass_sign.get("site") or "", pass_sign.get("chat"))
         except Exception as exc:
-            log(room, "consensus check failed, carrying on:", exc)
+            log("directed embed seat failed, carrying on:", exc)
+    elif go == "embedrelief" and pass_sign.get("chat") is not None:
+        site = pass_sign.get("site") or ""
+        chat = pass_sign.get("chat")
+        items = embed_pending_items(member_key) or []
+        item = None
+        for it in items:
+            if str(it.get("site") or it.get("slug") or "") == str(site) and str(it.get("chatId") or it.get("qid") or it.get("id")) == str(chat):
+                item = it
+                break
+        if item is None:
+            log("sign named embed relief on", chat, "but it is not in my pending list, standing down")
+        elif posting_live(config):
+            code, res = flag_post_embed(config, "relief", site, chat)
+            if code == 200 and res.get("ok", True):
+                log("embed chat", chat, "relief registered on the sign, watching for the handover")
+                try:
+                    watch_relief_embed(config, state, rules_text, site, chat, item)
+                except Exception as exc:
+                    log("embed relief watch failed, carrying on:", exc)
+            else:
+                log("embed chat", chat, "relief refused, HTTP", code, res.get("error", ""))
+        else:
+            log("sign named embed relief on", chat, ". DRY RUN, would register now.")
+    elif go == "private" and pass_sign.get("priv"):
+        priv = str(pass_sign.get("priv"))
+        prooms = state.setdefault("privateRooms", {})
+        if priv in prooms:
+            prooms[priv]["lastPoll"] = 0
+        try:
+            private_room_poll(config, state, rules_text, {"id": priv, "pin": ""})
+        except Exception as exc:
+            log("private room work failed, carrying on:", exc)
+    elif go == "room" and pass_sign.get("room"):
+        try:
+            directed_room_visit(config, state, rules_text, str(pass_sign.get("room")), pass_sign)
+        except Exception as exc:
+            log("directed room visit failed, carrying on:", exc)
+    elif go and go not in ("endrun", "run", "stop"):
+        log("sign said", go, ", which this runner does not know, standing down")
+    else:
+        log("sign says", pass_sign.get("say") or "end run", ", the cycle ends here")
     save_json(STATE_PATH, state)
     log("state saved")
     # Self update rides this same trip, here at the very end of the
-    # pass, when the runner holds no chat. True means a new runner was
-    # swapped in and main should restart into it.
+    # cycle, when the runner holds no chat. True means a new runner
+    # was swapped in and main should restart into it.
     return check_for_update(config)
 
 
@@ -2780,6 +2745,21 @@ def main():
     config["_resolved_model"] = resolve_model(config)
     ensure_password(member_key, state)
     save_json(STATE_PATH, state)
+    # v75: the release channel is checked at startup, before the
+    # first pass, as well as at the end of every pass. A runner
+    # that sat stopped or stuck while a newer version published
+    # swaps here instead of running the old file for another
+    # cycle. The swap and the restart are check_for_update and
+    # restart_runner, unchanged.
+    try:
+        if check_for_update(config):
+            if restart_runner():
+                log("restarting into the updated runner now.")
+            else:
+                log("the updated runner is on disk and will take over at the next start.")
+            return
+    except Exception as exc:
+        log("startup update check failed, carrying on with this version:", exc)
     rules_box = {}
     run_once = bool(config.get("run_once")) or bool(os.environ.get("RUNNER_ONCE"))
     first_pass_done = False
@@ -2797,9 +2777,17 @@ def main():
             log("pass failed, the loop carries on:", exc)
             if run_once:
                 return
-        if pass_ok and not first_pass_done:
+        if not first_pass_done:
             first_pass_done = True
             if not swapped:
+                # v75: a freshly swapped runner that got through
+                # its first pass call at all has started properly,
+                # even when a section inside the pass failed and
+                # was logged; boot.py rolls back only a runner
+                # that never gets this far. (Before v75 a pass
+                # that raised left the trial unmarked, and the
+                # next start restored the old runner and refused
+                # the new version forever.)
                 mark_update_good()
         if run_once:
             log("single pass mode, exiting")
@@ -2815,8 +2803,13 @@ def main():
             else:
                 log("the updated runner is on disk and will take over at the next start.")
             return
-        wait = int(central_loop_seconds(config))
-        log("next pass in", wait, "seconds. Running in the background: stop it with stop.bat.")
+        # v74: the one minute sign rhythm. The next cycle starts
+        # about a minute after this cycle's flag hit; a long stay
+        # or school visit simply runs over, and the next flag hit
+        # comes right after it ends.
+        elapsed = time.time() - float(state.get("last_checkin_epoch", 0) or 0)
+        wait = int(max(5, SIGN_RHYTHM_SECONDS - elapsed))
+        log("next check in about", wait, "seconds. Running in the background: stop it with stop.bat.")
         try:
             time.sleep(wait)
         except KeyboardInterrupt:

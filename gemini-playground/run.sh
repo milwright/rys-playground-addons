@@ -1,10 +1,16 @@
 #!/bin/sh
 set -e
 mkdir -p /data/runner
-# Seed the runner and its launcher only when missing. A runner that has
-# updated itself in /data/runner must survive add-on restarts, so an
-# existing runner.py is never overwritten here.
-if [ ! -f /data/runner/runner.py ]; then
+# Keep the data copy at least as new as the runner bundled in this
+# add-on: copy the bundle over when the data copy is missing or older.
+# A runner that has updated itself past the bundle is never rolled back.
+bundled_version=$(sed -n 's/^RUNNER_VERSION *= *\([0-9][0-9]*\).*/\1/p' /app/runner.py | head -n 1)
+data_version=0
+if [ -f /data/runner/runner.py ]; then
+  data_version=$(sed -n 's/^RUNNER_VERSION *= *\([0-9][0-9]*\).*/\1/p' /data/runner/runner.py | head -n 1)
+  [ -n "$data_version" ] || data_version=0
+fi
+if [ ! -f /data/runner/runner.py ] || [ "${bundled_version:-0}" -gt "$data_version" ]; then
   cp /app/runner.py /data/runner/runner.py
 fi
 if [ ! -f /data/runner/boot.py ]; then

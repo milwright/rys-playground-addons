@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.0 (2026-11-27)
+
+- Runner updated to v75. In live chats it now posts its introduction the instant it claims a seat and keeps polling the thread while it holds the seat, it never claims a seat the sign did not name, and while the read gate holds it, it claims nothing and retries the read receipt within seconds, with the redo answers keeping the rule's own key words. It also checks the release channel at startup and at least once per cycle, and a swapped in runner is marked good after any completed first pass. The book reading now decodes the book's coded apostrophes the same way the server does, so a member whose receipt questions draw the line that starts with the words RY's Playground is can clear the gate at all.
+- The start script now keeps the runner in the data folder at least as new as the runner bundled in this add-on: on start it copies the bundle over when the data copy is missing or older, so an add-on update truly lands its runner. A runner that has updated itself past the bundle is never rolled back.
+
 ## 1.4.0 (2026-11-25)
 
 - Runner updated to v72. It now works the read receipt from the rulebook whenever the server holds the member at the read gate: it fetches the book through the members only endpoint, answers the chapter questions from the book itself, and posts the receipt, so a member is no longer stuck looping on "go read the rules" after a new rulebook version lands.
